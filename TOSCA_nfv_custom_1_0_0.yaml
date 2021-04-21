@@ -1,0 +1,127 @@
+tosca_definitions_version: tosca_simple_yaml_1_2
+
+imports:
+  - TOSCA_nfv_common_types.yaml
+  - TOSCA_nfv_vnfd_types.yaml
+
+#------------------------------------------------------------------------------------------------------------------------------------
+
+data_types:
+  nfv.datatypes.vyos_config.dhcp:
+    derived_from: tosca.datatypes.Root
+    properties:
+      name:
+        type: string
+        required: true
+      subnet:
+        type: string
+        required: true
+      range_start:
+        type: string
+        required: true
+      range_stop:
+        type: string
+        required: true
+      static_mapping:
+        name:
+          type: string
+          required: true
+        ip_addr:
+          type: string
+          required: true
+        mac_add:
+          type: string
+          required: true
+      domain_name:
+        type: string
+        required: false
+      domain_search:
+        type: string
+        required: true
+  
+  nfv.datatypes.vyos_config.Firewall:
+    derived_from: tosca.datatypes.Root
+    properties:
+      name:
+        type: string
+        required: true
+      rule:
+        type: integer
+        required: true
+      protocol:
+        type: string
+        required: true
+      action:
+        type: string
+        required: true
+        constraints:
+          - valid_values: [ accept, drop, reject ]
+  
+  nfv.datatypes.vyos_config.NAT:
+    derived_from: tosca.datatypes.Root
+    properties:
+      route:
+        type: string
+        required: true
+        constraints:
+          - valid_values: [ source, destination ]
+      rule:
+        type: integer
+        required: true        
+      outbound_interface:
+        type: integer
+        required: true
+      inbound_interface:
+        type: integer
+        required: true
+      translation_address: 
+        type: integer
+        required: true
+  
+  nfv.datatypes.vyos_config.interfaces:
+    derived_from: tosca.datatypes.Root
+    properties:
+      type:
+        type: string
+        required: true
+      interface: 
+        type: string
+        required: true
+      addr:
+        type: string
+        required: true
+      firewall:
+        route:
+          type: string
+          required: true
+        name: 
+          type: string
+          required: true
+        required: false   
+#------------------------------------------------------------------------------------------------------------------------------------
+
+node_types:
+  nfv.VyOS.VNF:
+    derived_from: tosca.nodes.nfv.VNF
+    properties:
+      dhcp:              
+        type: nfv.datatype.vyos_config.dhcp
+        required: false
+      firewall:
+        type: nfv.datatype.vyos_config.Firewall
+        required: false
+      nat:
+        type: nfv.datatypes.vyos_config.NAT
+        required: false 
+      interfaces:
+        type: nfv.datatypes.vyos_config.interfaces
+        required: false
+#   requirements:
+#     - virtual_link_external: 
+#         capability: tosca.capabilities.nfv.VirtualLinkable
+#     - virtual_link_internal:
+#         capability: tosca.capabilities.nfv.VirtualLinkable
+    interfaces:
+      Vnflcm:
+        type: tosca.interfaces.nfv.Vnflcm
+
