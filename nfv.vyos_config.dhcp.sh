@@ -1,0 +1,12 @@
+- set service dhcp-server shared-network-name LAN1
+- set service dhcp-server shared-network-name LAN1 authoritative
+- set service dhcp-server shared-network-name LAN1 subnet "{{ subcidr }}/{{ prefix }}"
+- set service dhcp-server shared-network-name LAN1 subnet "{{ subcidr }}/{{ prefix }}" default-router "{{ vyosaddr }}"
+- set service dhcp-server shared-network-name LAN1 subnet "{{ subcidr }}/{{ prefix }}" domain-name google.com
+- set service dhcp-server shared-network-name LAN1 subnet "{{ subcidr }}/{{ prefix }}" domain-search google.com
+- set service dhcp-server shared-network-name LAN1 subnet "{{ subcidr }}/{{ prefix }}" range mynet start 192.168.30.5
+- set service dhcp-server shared-network-name LAN1 subnet "{{ subcidr }}/{{ prefix }}" range mynet stop 192.168.30.200
+- set service dhcp-server shared-network-name LAN1 subnet "{{ subcidr }}/{{ prefix }}" static-mapping sm1 ip-address "{{ osport_vm0 }}"
+- set service dhcp-server shared-network-name LAN1 subnet "{{ subcidr }}/{{ prefix }}" static-mapping sm1 mac-address "{{ osport_mac_vm0 }}"
+- set service dhcp-server shared-network-name LAN1 subnet "{{ subcidr }}/{{ prefix }}" static-mapping sm2 ip-address "{{ osport_vm1 }}"
+- set service dhcp-server shared-network-name LAN1 subnet "{{ subcidr }}/{{ prefix }}" static-mapping sm2 mac-address "{{ osport_mac_vm1 }}"
