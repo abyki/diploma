@@ -2,7 +2,6 @@ tosca_definitions_version: tosca_simple_yaml_1_2
 
 imports:
   - TOSCA_definition_1.yaml
-  - TOSCA_nfv_definition_1_0_0.yaml
 
 #------------------------------------------------------------------------------------------------------------------------------------
 
@@ -112,7 +111,6 @@ node_types:
     properties:
       firewall:
         type: nfv.datatype.vyos_config.Firewall
-        required: false
     requirements:
       - host: tosca.nodes.nfv.VDU
       - virtualLink: 
@@ -129,13 +127,12 @@ node_types:
     properties:
       dhcp:
         type: nfv.datatype.vyos_config.dhcp
-        required: false
     requirements:
       - host: tosca.nodes.nfv.VDU
-      - virtualLink:
-          capability: tosca.capabilities.nfv.VirtualLinkable
-          relationship: tosca.relationships.nfv.VirtualLinksTo
-          node: tosca.nodes.nfv.VL
+#      - virtualLink:
+#          capability: tosca.capabilities.nfv.VirtualLinkable
+#          relationship: tosca.relationships.nfv.VirtualLinksTo
+#          node: tosca.nodes.nfv.VL
     interfaces:
       standard:
         config:
@@ -146,7 +143,6 @@ node_types:
     properties:
       dhcp:
         type: nfv.datatype.vyos_config.NAT
-        required: false
     requirements:
       - host: tosca.nodes.nfv.VDU
       - virtualLink:
@@ -156,8 +152,65 @@ node_types:
     interfaces:
       standard:
         config:
-          implementation: nfv.vyos_config.NAT.sh
+          implementation: nfv.vyos_config.nat.sh
+
+  nfv.nodes.VyOS.VNF.interfaces:
+    derived_from: tosca.nodes.Root
+    properties:
+      dhcp:
+        type: nfv.datatype.vyos_config.interfaces
+    requirements:
+      - host: tosca.nodes.nfv.VDU
+      - virtualLink:
+          capability: tosca.capabilities.nfv.VirtualLinkable
+          relationship: tosca.relationships.nfv.VirtualLinksTo
+          node: tosca.nodes.nfv.VL
+    interfaces:
+      standard:
+        config:
+          implementation: nfv.vyos_config.interfaces.sh
+ 
+  nfv.nodes.VL:
+    derived_from: tosca.nodes.network.Network
+    capabilities:
+      virtual_linkable:
+        type: tosca.capabilities.nfv.VirtualLinkable
   
+  nfv.nodes.CP:
+    derived_from: tosca.nodes.network.Port
+    properties:
+      type:
+        type: string
+        required: false
+    requirements:
+      - virtualLink:
+          capability: tosca.capabilities.nfv.VirtualLinkable
+          relationship: tosca.relationships.nfv.VirtualLinksTo
+          node: tosca.nodes.nfv.VL
+      - virtualBinding:
+          capability: tosca.capabilities.nfv.VirtualBindable
+          relationship: tosca.relationships.nfv.VirtualBindsTo
+          node: tosca.nodes.nfv.VDU
+    attributes:
+      address:
+        type: string
              
 #------------------------------------------------------------------------------------------------------------------------------------
+relationship_types:
+  nfv.relationships.VirtualLinksTo:
+    derived_from: tosca.relationships.network.LinksTo
+    valid_target_types: [ nfv.capabilities.VirtualLinkable ]
+
+  nfv.relationships.VirtualBindsTo:
+    derived_from: tosca.relationships.network.BindsTo
+    valid_target_types: [ nfv.capabilities.VirtualBindable ]
+
+#------------------------------------------------------------------------------------------------------------------------------------
+capability_types:
+  tosca.capabilities.nfv.VirtualLinkable:
+    derived_from: tosca.capabilities.network.Linkable
+
+  tosca.capabilities.nfv.VirtualBindable:
+    derived_from: tosca.capabilities.network.Bindable
+
 
