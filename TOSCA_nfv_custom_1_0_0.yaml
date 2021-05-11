@@ -1,0 +1,435 @@
+tosca_definitions_version: tosca_simple_yaml_1_2
+
+imports:
+  - TOSCA_definition_1.yaml
+
+#------------------------------------------------------------------------------------------------------------------------------------
+
+data_types:
+  nfv.datatypes.vyos_config.dhcp:
+    derived_from: tosca.datatypes.Root
+    properties:
+      name:
+        type: string
+        required: true
+      subnet:
+        type: string
+        required: true
+      range_start:
+        type: string
+        required: true
+      range_stop:
+        type: string
+        required: true
+      static_mapping:
+        name:
+          type: string
+          required: true
+        ip_addr:
+          type: string
+          required: true
+        mac_add:
+          type: string
+          required: true
+      domain_name:
+        type: string
+        required: false
+      domain_search:
+        type: string
+        required: true
+  
+  nfv.datatypes.vyos_config.Firewall:
+    derived_from: tosca.datatypes.Root
+    properties:
+      name:
+        type: string
+        required: true
+      rule:
+        type: integer
+        required: true
+      protocol:
+        type: string
+        required: true
+      action:
+        type: string
+        required: true
+        constraints:
+          - valid_values: [ accept, drop, reject ]
+  
+  nfv.datatypes.vyos_config.NAT:
+    derived_from: tosca.datatypes.Root
+    properties:
+      route:
+        type: string
+        required: true
+        constraints:
+          - valid_values: [ source, destination ]
+      rule:
+        type: integer
+        required: true        
+      outbound_interface:
+        type: integer
+        required: true
+      inbound_interface:
+        type: integer
+        required: true
+      translation_address: 
+        type: integer
+        required: true
+  
+  nfv.datatypes.vyos_config.interfaces:
+    derived_from: tosca.datatypes.Root
+    properties:
+      type:
+        type: string
+        required: true
+      interface: 
+        type: string
+        required: true
+      addr:
+        type: string
+        required: true
+      firewall:
+        route:
+          type: string
+          required: true
+        name: 
+          type: string
+          required: true
+        required: false
+
+  nfv.datatypes.ScalingAspect:
+    derived_from: tosca.datatypes.Root
+    properties:
+      name:
+        type: string
+        required: true
+      description:
+        type: string
+        required: true
+      max_scale_level:
+        type: integer # positiveInteger
+        required: true
+        constraints:
+          - greater_or_equal: 0
+      step_deltas:
+        type: list
+        required: false
+        entry_schema:
+          type: string # Identifier
+
+  nfv.datatypes.InstantiationLevel:
+    derived_from: tosca.datatypes.Root
+    description: Describes the scale level for each aspect that corresponds to a given level of resources to be instantiated within a deployment flavour in term of the number VNFC instances
+    properties:
+      description:
+        type: string
+        description: Human readable description of the level
+        required: true
+      scale_info:
+        type: map # key: aspectId
+        description: Represents for each aspect the scale level that corresponds to this instantiation level. scale_info shall be present if the VNF supports scaling.
+        required: false
+        entry_schema:
+          type: nfv.datatypes.ScaleInfo
+
+  nfv.datatypes.ScaleInfo:
+    derived_from: tosca.datatypes.Root
+    description: Indicates for a given scaleAspect the corresponding scaleLevel
+    properties:
+      scale_level:
+        type: integer
+        description: The scale level for a particular aspect
+        required: true
+        constraints:
+          - greater_or_equal: 0
+
+  nfv.datatypes.VirtualBlockStorageData:
+    derived_from: tosca.datatypes.Root
+    description: VirtualBlockStorageData describes block storage requirements associated with compute resources in a particular VDU, either as a local disk or as virtual attached storage
+    properties:
+      size_of_storage:
+        type: scalar-unit.size
+        description: Size of virtualised storage resource
+        required: true
+        constraints:
+          - greater_or_equal: 0 B
+      vdu_storage_requirements:
+        type: map
+        description: The hardware platform specific storage requirements. A map of strings that contains a set of key-value pairs that represents the hardware platform specific storage deployment requirements.
+        required: false
+        entry_schema:
+          type: string
+
+  nfv.datatypes.SwImageData:
+    derived_from: tosca.datatypes.Root
+    description: describes information  related to a software image artifact
+    properties: # in SOL001 v0.8.0: "properties or metadata:"
+      name:
+        type: string
+        description: Name of this software image
+        required: true
+      version:
+        type: string
+        description: Version of this software image
+        required: true
+      container_format:
+        type: string
+        description: The container format describes the container file format in which software image is provided
+        required: true
+        constraints:
+          - valid_values: [ aki, ami, ari, bare, docker, ova, ovf ]
+      disk_format:
+        type: string
+        description: The disk format of a software image is the format of the underlying disk image
+        required: true
+        constraints:
+          - valid_values: [ aki, ami, ari, iso, qcow2, raw, vdi, vhd, vhdx, vmdk ]
+      min_disk:
+        type: scalar-unit.size # Number
+        description:  The minimal disk size requirement for this software image
+        required: true
+        constraints:
+          - greater_or_equal: 0 B
+      min_ram:
+        type: scalar-unit.size # Number
+        description: The minimal RAM requirement for this software image
+        required: false
+        constraints:
+          - greater_or_equal: 0 B
+      size:
+        type: scalar-unit.size # Number
+        description: The size of this software image
+        required: true
+      operating_system:
+        type: string
+        description: Identifies the operating system used in the software image
+        required: false
+      supported_virtualisation_environments:
+        type: list
+        description: Identifies the virtualisation environments (e.g. hypervisor) compatible with this software image
+        required: false
+        entry_schema:
+          type: string
+
+  nfv.datatypes.VirtualMemory:
+    derived_from: tosca.datatypes.Root
+    description: supports the specification of requirements related to virtual memory of a virtual compute resource
+    properties:
+      virtual_mem_size:
+        type: scalar-unit.size
+        description: Amount of virtual memory.
+        required: true
+#------------------------------------------------------------------------------------------------------------------------------------
+
+node_types:
+  nfv.nodes.Compute.VDU:
+     derived_from: tosca.nodes.Compute
+     capabilities:
+       virtualbinding:
+         type: nfv.capabilities.VirtualBindable
+       virtual_compute:
+         type: nfv.capabilities.VirtualCompute
+
+  nfv.nodes.VyOS.VNF.Firewall:
+    derived_from: tosca.nodes.Root
+    properties:
+      firewall:
+        type: nfv.datatype.vyos_config.Firewall
+    requirements:
+      - host: nfv.nodes.Compute.VDU
+      - virtualLink: 
+          capability: nfv.capabilities.VirtualLinkable
+          relationship: nfv.relationships.VirtualLinksTo
+          node: nfv.nodes.VL
+    interfaces:
+      standard:
+        config:
+          implementation: nfv.vyos_config.firewall.sh
+
+  nfv.nodes.VyOS.VNF.dhcp:
+    derived_from: tosca.nodes.Root
+    properties:
+      dhcp:
+        type: nfv.datatype.vyos_config.dhcp
+    requirements:
+      - host: tosca.nodes.nfv.VDU
+      - virtualLink:
+          capability: nfv.capabilities.VirtualLinkable
+          relationship: nfv.relationships.VirtualLinksTo
+          node: nfv.node.VL
+    interfaces:
+      standard:
+        config:
+          implementation: nfv.vyos_config.dhcp.sh
+
+  nfv.nodes.VyOS.VNF.NAT:
+    derived_from: tosca.nodes.Root
+    properties:
+      dhcp:
+        type: nfv.datatype.vyos_config.NAT
+    requirements:
+      - host: nfv.nodes.Compute.VDU
+      - virtualLink:
+          capability: nfv.capabilities.VirtualLinkable
+          relationship: nfv.relationships.VirtualLinksTo
+          node: nfv.nodes.VL
+    interfaces:
+      standard:
+        config:
+          implementation: nfv.vyos_config.nat.sh
+
+  nfv.nodes.VyOS.VNF.interfaces:
+    derived_from: tosca.nodes.Root
+    properties:
+      dhcp:
+        type: nfv.datatype.vyos_config.interfaces
+    requirements:
+      - host: nfv.nodes.Compute.VDU
+      - virtualLink:
+          capability: nfv.capabilities.VirtualLinkable
+          relationship: nfv.relationships.VirtualLinksTo
+          node: nfv.nodes.VL
+    interfaces:
+      standard:
+        config:
+          implementation: nfv.vyos_config.interfaces.sh
+ 
+  nfv.nodes.VL:
+    derived_from: tosca.nodes.network.Network
+    capabilities:
+      virtual_linkable:
+        type: nfv.capabilities.VirtualLinkable
+  
+  nfv.nodes.CP:
+    derived_from: tosca.nodes.network.Port
+    properties:
+      type:
+        type: string
+        required: false
+    requirements:
+      - virtualLink:
+          capability: nfv.capabilities.VirtualLinkable
+          relationship: nfv.relationships.VirtualLinksTo
+          node: tosca.nodes.nfv.VL
+      - virtualBinding:
+          capability: nfv.capabilities.VirtualBindable
+          relationship: nfv.relationships.VirtualBindsTo
+          node: nfv.nodes.Compute.VDU
+    attributes:
+      address:
+        type: string
+
+  nfv.nodes.Vdu.VirtualBlockStorage:
+    derived_from: tosca.nodes.Root
+    description: This node type describes the specifications of requirements related to virtual block storage resources
+    properties:
+      virtual_block_storage_data:
+        type: nfv.datatypes.VirtualBlockStorageData
+        description: Describes the block storage characteristics.
+        required: true
+      sw_image_data:
+        type: nfv.datatypes.SwImageData
+        description: Defines information related to a SwImage artifact used by this Vdu.Compute node.
+        required: false # property is required when the node template has an associated artifact of type tosca.artifacts.nfv.SwImage and not required otherwise
+    capabilities:
+      virtual_storage:
+        type: nfv.capabilities.VirtualStorage
+        description: Defines the capabilities of virtual_storage.
+             
+#------------------------------------------------------------------------------------------------------------------------------------
+relationship_types:
+  nfv.relationships.VirtualLinksTo:
+    derived_from: tosca.relationships.network.LinksTo
+    valid_target_types: [ nfv.capabilities.VirtualLinkable ]
+
+  nfv.relationships.VirtualBindsTo:
+    derived_from: tosca.relationships.network.BindsTo
+    valid_target_types: [ nfv.capabilities.VirtualBindable ]
+
+#------------------------------------------------------------------------------------------------------------------------------------
+capability_types:
+  nfv.capabilities.VirtualLinkable:
+    derived_from: tosca.capabilities.network.Linkable
+
+  nfv.capabilities.VirtualBindable:
+    derived_from: tosca.capabilities.network.Bindable
+
+  nfv.capabilities.VirtualStorage:
+    derived_from: tosca.capabilities.Root
+    description: Describes the attachment capabilities related to Vdu.Storage
+
+  tosca.capabilities.nfv.VirtualCompute:
+    derived_from: tosca.capabilities.Node
+    description: Describes the capabilities related to virtual compute resources
+    properties:
+      virtual_memory:
+        type: nfv.datatypes.VirtualMemory
+        description: Describes virtual memory of the virtualized compute
+        required: true
+      virtual_cpu:
+        type: nfv.datatypes.VirtualCpu
+        description: Describes virtual CPU(s) of the virtualized compute
+        required: true
+      virtual_local_storage:
+        type: list
+        description: A list of virtual system disks created and destroyed as part of the VM lifecycle
+        required: false
+        entry_schema:
+          type: nfv.datatypes.VirtualBlockStorageData
+          description: virtual system disk definition
+
+    nfv.capabilities.VirtualCompute:
+    derived_from: tosca.capabilities.Node
+    description: Describes the capabilities related to virtual compute resources
+    properties:
+      virtual_memory:
+        type: nfv.datatypes.VirtualMemory
+        description: Describes virtual memory of the virtualized compute
+        required: true
+      virtual_cpu:
+        type: nfv.datatypes.VirtualCpu
+        description: Describes virtual CPU(s) of the virtualized compute
+        required: true
+      virtual_local_storage:
+        type: list
+        description: A list of virtual system disks created and destroyed as part of the VM lifecycle
+        required: false
+        entry_schema:
+          type: nfv.datatypes.VirtualBlockStorageData
+          description: virtual system disk definition
+
+#-----------------------------------------------------------------------------------------------------------------------------------
+artifact_types:
+  nfv.artifacts.SwImage:
+    derived_from: tosca.artifacts.Deployment.Image
+
+#-----------------------------------------------------------------------------------------------------------------------------------
+policy_types:
+  nfv.policies.ScalingAspects:
+    derived_from: tosca.policies.Root
+    properties:
+      aspects:
+        type: map # key: aspectId
+        required: true
+        entry_schema:
+          type: nfv.datatypes.ScalingAspect
+        constraints:
+          - min_length: 1
+
+  nfv.policies.InstantiationLevels:
+    derived_from: tosca.policies.Root
+    description: The InstantiationLevels type is a policy type representing all the instantiation levels of resources to be instantiated within a deployment flavour and including default instantiation level in term of the number of VNFC instances to be created as defined in ETSI GS NFV-IFA 011 [1].
+    properties:
+      levels:
+        type: map # key: levelId
+        description: Describes the various levels of resources that can be used to instantiate the VNF using this flavour.
+        required: true
+        entry_schema:
+          type: nfv.datatypes.InstantiationLevel
+        constraints:
+          - min_length: 1
+      default_level:
+        type: string # levelId
+        description: The default instantiation level for this flavour.
+        required: false # required if multiple entries in levels
