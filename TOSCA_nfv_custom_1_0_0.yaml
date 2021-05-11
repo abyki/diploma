@@ -358,21 +358,6 @@ capability_types:
         entry_schema:
           type: nfv.datatypes.VirtualBlockStorageData
 
-    nfv.capabilities.VirtualCompute:
-    derived_from: tosca.capabilities.Node
-    properties:
-      virtual_memory:
-        type: nfv.datatypes.VirtualMemory
-        required: true
-      virtual_cpu:
-        type: nfv.datatypes.VirtualCpu
-        required: true
-      virtual_local_storage:
-        type: list
-        required: false
-        entry_schema:
-          type: nfv.datatypes.VirtualBlockStorageData
-
 #-----------------------------------------------------------------------------------------------------------------------------------
 artifact_types:
   nfv.artifacts.SwImage:
