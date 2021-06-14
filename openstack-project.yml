@@ -1,0 +1,381 @@
+---
+- name: openstack configuration
+  hosts: localhost
+  become: yes
+  vars_files:
+    - /home/mugadzhir/virt_env/ansible/host_vars/localhost
+    - ./host_vars/register_vars
+  tasks:
+
+    - name: Create internal network
+      os_network:
+        cloud: "{{ cloudname }}"
+        state: present
+        name: "{{ netname }}"
+      register: osnet
+      when: if_create_internal_net
+    - debug:
+        var: osnet.id
+      when: if_create_internal_net
+
+    - name: Create Subnet
+      os_subnet: 
+        state: present
+        cloud: "{{ cloudname }}"
+        network_name: "{{ netname }}"
+        name: "{{  subname }}"
+        cidr: "{{ subcidr }}/{{ prefix }}"
+        gateway_ip: "{{ vyosaddr }}"
+#        no_gateway_ip: yes
+        enable_dhcp: no
+      register: ossub
+            
+
+    - debug:
+        var: ossub.id
+    
+    - name: Create internal port for Vyos
+      os_port:
+        state: present
+        cloud: "{{ cloudname }}"
+        network: "{{ netname }}"
+        no_security_groups: yes
+        name: port_vyos
+        port_security_enabled: no
+        admin_state_up: yes
+        fixed_ips:
+          - ip_address: "{{ vyosaddr }}"
+            subnet_id: "{{ ossub.id }}"
+        
+    - name: Create external port for Vyos
+      os_port:
+        state: present
+        cloud: "{{ cloudname }}"
+        network: "{{ external_netname }}"
+        name: port_vyos_external
+        admin_state_up: yes
+        port_security_enabled: yes
+        security_groups: "{{ security_group }}"
+      register: osport_ex1  
+    
+    - debug:
+        var: osport_ex1.port.fixed_ips.0.ip_address
+
+    - name: create ex ports for Custom VMs
+      os_port:
+        state: present
+        cloud: "{{ cloudname }}"
+        network: "{{ external_netname }}"
+        security_groups: "{{ security_group }}"
+        admin_state_up: yes
+        name: "{{ item }}"
+      with_items:
+        - port_ex_vm1
+        - port_ex_vm2
+      register: osport_ex_vm
+   
+    - debug:
+        var:
+          - osport_ex_vm.results[0].port.fixed_ips[0].ip_address 
+          - osport_ex_vm.results[1].port.fixed_ips[0].ip_address 
+
+    - name: create internal ports for Custom VMs
+      os_port:
+        state: present
+        cloud: "{{ cloudname }}"
+        network: "{{ netname }}"
+        security_groups: "{{ security_group }}"
+        admin_state_up: yes
+        name: "{{ item }}"
+      with_items: 
+        - port_vm1
+        - port_vm2
+      register: osport_vm
+    
+    - debug:
+        msg: 
+          - "port_vm1: {{ osport_vm.results[0].port.mac_address }} with {{ osport_vm.results[0].port.fixed_ips[0].ip_address }}" 
+          - "port_vm2: {{ osport_vm.results[1].port.mac_address }} with {{ osport_vm.results[1].port.fixed_ips[0].ip_address }}"
+
+#    - name: create Custom VM
+#      os_server:
+#        state: present
+#        cloud: "{{ cloudname }}"
+#        name: "{{ item.name }}"
+#        image: "{{ VM_image}}"
+#        flavor: "{{ VM_flavor }}"
+#        nics:
+#          - port-name: "{{ item.port }}"
+#        key_name: "{{ keypair }}"
+#      with_items: 
+#        - {name: Custom_VM1, port: port_vm1}
+#        - {name: Custom_VM2, port: port_vm2}
+#      register: osserv_vm
+
+        
+    - os_server_info:
+        cloud: "{{ cloudname }}"
+        server: ansible_vyos
+      register: instance_state
+
+    - debug: 
+        var: instance_state.openstack_servers.0
+
+    - name: Create a Vyos-instance and add ports to it
+      os_server:
+        state: present
+        cloud: "{{ cloudname }}"
+        name: ansible_vyos
+        image: vyos-crux
+        flavor: "{{vyos_flavor}}"
+        nics:
+         - port-name: port_vyos_external
+         - port-name: port_vyos
+         - port-name: port_ex_vm1
+         - port-name: port_ex_vm2
+        key_name: "{{ keypair }}"
+        timeout: 200
+      register: osserv_vyos
+      when: instance_state.openstack_servers.0 is not defined
+ 
+    - debug: 
+        var: osserv_vyos.id 
+    - name: Timeout for Vyos to get into active state
+      wait_for:
+        timeout: 45  
+      when: instance_state.openstack_servers.0 is not defined
+
+#    - add_host:
+#        hostname: "{{ osport_ex1.port.fixed_ips.0.ip_address }}" 
+#        ansible_user: vyos
+#        ansible_password: vyos
+#        groups: vyos
+#        ansible_ssh_common_args: '-o StrictHostKeyChecking=no'   
+#        inventory_dir: /etc/ansible/hosts
+    - os_networks_info:
+        cloud: "{{ cloudname }}"
+        name: "{{ external_netname }}"
+      register: osnetinfo
+    - os_subnets_info:
+        cloud: "{{ cloudname }}"
+        name: "{{ osnetinfo.openstack_networks.0.subnets.0 }}"
+      register: ossubinfo
+    - set_fact:
+        external_prefix: "{{ ossubinfo.openstack_subnets.0.cidr | ipaddr('prefix') }}"
+
+    - name: edit host file
+      become: yes
+      lineinfile:
+        path: "{{ host_file }}"
+        state: present
+        regexp: '^{{ item.name }}'
+        insertafter: '^[{{ item.group }}]'
+        line: "{{ item.name }} ansible_host={{ item.ip }} ansible_user={{ item.user }}"
+        owner: mugadzhir
+      with_items: 
+        - {group: vyos, name: ansible_vyos, ip: "{{  osport_ex1.port.fixed_ips.0.ip_address }}", user: vyos}
+        - {group: servers, name: Custom_VM1, ip: "{{ osport_ex_vm.results[0].port.fixed_ips.0.ip_address }}", user: cirros}
+        - {group: servers, name: Custom_VM2, ip: "{{ osport_ex_vm.results[1].port.fixed_ips.0.ip_address }}", user: cirros} 
+
+    - name: Write the Vyos and VMs host keys to known_hosts
+      become: yes 
+      connection: local
+      shell: "ssh-keyscan -H {{ item }} >> /home/mugadzhir/.ssh/known_hosts"
+      ignore_errors: true
+      with_items: 
+        - "{{ osport_ex1.port.fixed_ips.0.ip_address }}"
+
+    - name: saving register variable
+      become: yes
+      lineinfile:
+        path: ./host_vars/register_vars
+        state: present
+        create: yes
+        regexp: '^{{ item.name }}'
+        line: "{{ item.name }}: {{ item.value}}"
+      with_items: 
+        - {name: "osport_ex_vm0", value: "{{ osport_ex_vm.results[0].port.fixed_ips.0.ip_address }}"}
+        - {name: "osport_ex_vm1", value: "{{ osport_ex_vm.results[1].port.fixed_ips.0.ip_address }}"}
+        - {name: "osport_vm0", value: "{{ osport_vm.results[0].port.fixed_ips[0].ip_address }}"}
+        - {name: "osport_vm1", value: "{{ osport_vm.results[1].port.fixed_ips[0].ip_address }}"}
+        - {name: "osport_mac_vm0", value: "{{ osport_vm.results[0].port.mac_address }}"}
+        - {name: "osport_mac_vm1", value: "{{ osport_vm.results[1].port.mac_address }}"}
+        - {name: "external_prefix", value: "{{ external_prefix }}"}
+        - {name: "external_gateway", value: "{{ ossubinfo.openstack_subnets.0.gateway_ip }}"}
+        - {name: "external_network_id", value: "{{ osnetinfo.openstack_networks.0.id }}"}
+        - {name: "external_sidr", value: "{{ ossubinfo.openstack_subnets.0.cidr }}"}
+
+    - include_vars:
+        file: /home/mugadzhir/virt_env/ansible/host_vars/localhost
+
+    - os_port_info:
+        cloud: "{{ cloudname }}"
+        filters:
+          device_owner: network:dhcp
+          network_id: "{{ external_network_id }}"
+          status: ACTIVE
+      register: port_info
+    - debug:
+        var: port_info.openstack_ports[0].fixed_ips.0.ip_address
+
+    - name: saving register variable
+      become: yes
+      lineinfile:
+        path: ./host_vars/register_vars
+        state: present
+        create: yes
+        regexp: '^{{ item.name }}'
+        line: "{{ item.name }}: {{ item.value}}"
+      with_items: 
+        - {name: "dhcp_ip", value: "{{ port_info.openstack_ports[0].fixed_ips.0.ip_address }}"}
+      ignore_errors: true
+      when: port_info.openstack_ports[0].fixed_ips.0.ip_address is defined
+
+    - meta: refresh_inventory 
+      
+- name: Edit Vyos dchp lease file
+  hosts: ansible_vyos
+  become: yes
+  vars_files: 
+    - /home/mugadzhir/virt_env/ansible/host_vars/localhost
+    - ./host_vars/register_vars
+  tasks:
+
+    - debug:
+        var: subcidr
+    - lineinfile:
+        path: /usr/libexec/vyos/conf_mode/dhcp_server.py
+        regexp: lease_file = r'/config/dhcpd.leases'
+        line: lease_file = r'/opt/vyatta/config/dhcpd.leases'
+
+    - meta: refresh_inventory
+
+- name: Conf VyOS
+  hosts: ansible_vyos
+#  gather_facts: false
+  vars:
+#    host: "{{ osport_x1.fixed_ips}}"
+    ansible_connection: network_cli
+    ansible_network_os: vyos
+#    ansible_user: vyos
+#    ansible_password: vyos
+    authorize: yes
+    transport: cli
+  tasks:
+    - include_vars:
+        file: /home/mugadzhir/virt_env/ansible/host_vars/localhost
+    - include_vars:
+        file: ./host_vars/register_vars
+    - name: eth
+      vyos_config:
+        lines:
+          - set interfaces ethernet eth1 address "{{ vyosaddr }}/{{ prefix }}"
+          - set interfaces ethernet eth2 address "{{ osport_ex_vm0 }}/{{ external_prefix }}"
+          - set interfaces ethernet eth3 address "{{ osport_ex_vm1 }}/{{ external_prefix }}"
+
+    - name: dhcp
+      vyos_config:
+        lines:
+          - set service dhcp-server shared-network-name LAN1
+          - set service dhcp-server shared-network-name LAN1 authoritative
+          - set service dhcp-server shared-network-name LAN1 subnet "{{ subcidr }}/{{ prefix }}"
+          - set service dhcp-server shared-network-name LAN1 subnet "{{ subcidr }}/{{ prefix }}" default-router "{{ vyosaddr }}"
+          - set service dhcp-server shared-network-name LAN1 subnet "{{ subcidr }}/{{ prefix }}" domain-name google.com
+          - set service dhcp-server shared-network-name LAN1 subnet "{{ subcidr }}/{{ prefix }}" domain-search google.com
+          - set service dhcp-server shared-network-name LAN1 subnet "{{ subcidr }}/{{ prefix }}" range mynet start 192.168.30.5
+          - set service dhcp-server shared-network-name LAN1 subnet "{{ subcidr }}/{{ prefix }}" range mynet stop 192.168.30.200
+          - set service dhcp-server shared-network-name LAN1 subnet "{{ subcidr }}/{{ prefix }}" static-mapping sm1 ip-address "{{ osport_vm0 }}"
+          - set service dhcp-server shared-network-name LAN1 subnet "{{ subcidr }}/{{ prefix }}" static-mapping sm1 mac-address "{{ osport_mac_vm0 }}"
+          - set service dhcp-server shared-network-name LAN1 subnet "{{ subcidr }}/{{ prefix }}" static-mapping sm2 ip-address "{{ osport_vm1 }}"
+          - set service dhcp-server shared-network-name LAN1 subnet "{{ subcidr }}/{{ prefix }}" static-mapping sm2 mac-address "{{ osport_mac_vm1 }}"
+
+    - name: Firewall
+      vyos_config:
+        lines:
+          - set firewall all-ping 'enable'
+          - set firewall name LAN-IN rule 10 action 'accept'
+          - set firewall name LAN-IN rule 10 protocol 'icmp'
+          - set firewall name LAN-IN rule 11 action 'accept'
+          - set firewall name LAN-IN rule 11 protocol 'tcp_udp'
+          - set firewall name LAN-OUT rule 10 action 'accept'
+          - set firewall name LAN-OUT rule 10 protocol 'icmp'
+          - set firewall name LAN-OUT rule 11 action 'accept'
+          - set firewall name LAN-OUT rule 11 protocol 'tcp_udp'
+
+    - name: Add firewall rules on interface eth1
+      vyos_config:
+        lines:
+          - set interfaces ethernet eth1 firewall in name 'LAN-IN'
+          - set interfaces ethernet eth1 firewall out name 'LAN-OUT'
+
+    - name: Snat
+      vyos_config:
+        lines:
+          - set nat destination rule 10 destination address "{{ osport_ex_vm0 }}"
+          - set nat destination rule 10 inbound-interface 'eth2'
+          - set nat destination rule 10 translation address {{ osport_vm0 }}
+          - set nat destination rule 11 destination address {{ osport_ex_vm1 }}
+          - set nat destination rule 11 inbound-interface 'eth3'
+          - set nat destination rule 11 translation address {{ osport_vm1 }}
+
+    - name: Dnat
+      vyos_config:
+        lines:
+          - set nat source rule 11 outbound-interface 'eth3'
+          - set nat source rule 11 source address {{ osport_vm1 }}
+          - set nat source rule 11 translation address {{ osport_ex_vm1 }}
+          - set nat source rule 10 outbound-interface 'eth2'
+          - set nat source rule 10 source address {{ osport_vm0 }}
+          - set nat source rule 10 translation address {{ osport_ex_vm0 }}
+
+- name: Edit vyos tables
+  hosts: ansible_vyos
+  become: yes
+  tasks:
+    - include_vars:
+        file: /home/mugadzhir/virt_env/ansible/host_vars/localhost
+    - include_vars:
+        file: ./host_vars/register_vars
+    - debug:
+        var: subcidr
+    - name: route table
+      shell: |
+        ip route add {{ external_sidr}} dev {{ item.eth }} scope link src {{ item.ip }} table {{ item.number }}
+        ip route add {{ metadata_server }} via {{ dhcp_ip }}  dev {{ item.eth }} table {{ item.number }}
+        ip route add {{ subcidr }}/{{ prefix }} dev eth1 scope link src {{ vyosaddr }} table {{ item.number }}
+        ip route add default via {{ external_gateway }} dev {{ item.eth }} table {{ item.number }}
+        ip rule add from {{ item.rule }} table {{ item.number }}
+      ignore_errors: true
+      become: yes
+      with_items:
+        - {eth: eth2, ip: "{{ osport_ex_vm0 }}", number: 102, rule: "{{ osport_vm0 }}"}
+        - {eth: eth3, ip: "{{ osport_ex_vm1 }}", number: 103, rule: "{{ osport_vm1 }}"}
+  
+#    - name: ip rule
+#      shell: |
+        
+      
+- name: configuration
+  hosts: localhost
+
+  tasks:
+    - include_vars:
+        file: /home/mugadzhir/virt_env/ansible/host_vars/localhost
+    - include_vars:
+        file: ./host_vars/register_vars
+
+    - name: create Custom VM
+      os_server:
+        state: present
+        cloud: "{{ cloudname }}"
+        name: "{{ item.name }}"
+        image: "{{ item.image }}"
+        flavor: "{{ VM_flavor }}"
+        auto_ip: no
+        nics: 
+          - port-name: "{{ item.port }}"
+        key_name: "{{ keypair }}"
+      with_items:
+        - {name: Custom_VM1, port: port_vm1, image: "{{ VM_image1 }}"}
+        - {name: Custom_VM2, port: port_vm2, image: "{{ VM_image2 }}"}
+      register: osserv_vm
