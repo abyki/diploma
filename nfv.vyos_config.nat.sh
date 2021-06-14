@@ -1,13 +1,7 @@
-- set nat destination rule 10 destination address "{{ osport_ex_vm0 }}"
-- set nat destination rule 10 inbound-interface 'eth2'
+- set nat destination rule 10 destination address {{ osport_ex_vm0 }}
+- set nat destination rule 10 inbound-interface {{ eth }}
 - set nat destination rule 10 translation address {{ osport_vm0 }}
-- set nat destination rule 11 destination address {{ osport_ex_vm1 }}
-- set nat destination rule 11 inbound-interface 'eth3'
-- set nat destination rule 11 translation address {{ osport_vm1 }}
 
-- set nat source rule 11 outbound-interface 'eth3'
-- set nat source rule 11 source address {{ osport_vm1 }}
-- set nat source rule 11 translation address {{ osport_ex_vm1 }}
-- set nat source rule 10 outbound-interface 'eth2'
+- set nat source rule 10 outbound-interface {{ eth }}
 - set nat source rule 10 source address {{ osport_vm0 }}
 - set nat source rule 10 translation address {{ osport_ex_vm0 }}
