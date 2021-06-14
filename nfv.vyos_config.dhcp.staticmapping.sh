@@ -1,0 +1,2 @@
+- set service dhcp-server shared-network-name LAN1 subnet "{{ subcidr }}/{{ prefix }}" static-mapping sm1 ip-address "{{ osport_vm0 }}"
+- set service dhcp-server shared-network-name LAN1 subnet "{{ subcidr }}/{{ prefix }}" static-mapping sm1 mac-address "{{ osport_mac_vm0 }}"
