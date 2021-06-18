@@ -394,7 +394,7 @@ node_types:
       - host: nfv.nodes.VyOS
         relationship: VyOS-VM
       
-      - VM: nfv.nodes.Compute.VDU
+      - host: nfv.nodes.Compute.VDU
         relationship: DependsOn
 
   nfv.nodes.CP:
