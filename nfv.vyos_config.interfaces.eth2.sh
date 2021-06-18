@@ -1,2 +1,2 @@
-- set interfaces ethernet eth2 address "{{ osport_ex_vm0 }}/{{ external_prefix }}"
+- set interfaces ethernet {{ eth }} address "{{ CustomVM_ex_ip }}/{{ external_prefix }}"
 

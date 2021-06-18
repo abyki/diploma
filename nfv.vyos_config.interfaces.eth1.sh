@@ -1,1 +1,1 @@
-- set interfaces ethernet eth1 address "{{ vyosaddr }}/{{ prefix }}"
+- set interfaces ethernet {{ vyos_interface }} address "{{ vyos_addr }}/{{ internal_prefix }}"
